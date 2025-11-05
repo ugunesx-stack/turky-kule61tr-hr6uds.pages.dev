@@ -1,0 +1,9 @@
+/project-root
+├─ package.json                (opsiyonel)
+├─ /public
+│   ├─ index.html
+│   ├─ index.js
+│   └─ Vers0.css
+└─ /functions
+   └─ /api
+      └─ data.js
