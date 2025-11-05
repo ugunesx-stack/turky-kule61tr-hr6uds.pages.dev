@@ -1,5 +1,3 @@
-public/index.js
-
 // public/index.js
 (async function () {
   const container = document.getElementById('ataquesXXX');
@@ -98,4 +96,5 @@ public/index.js
 
   await fetchAndRender();
   setInterval(fetchAndRender, 30000);
+
 })();
