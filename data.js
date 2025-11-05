@@ -1,5 +1,3 @@
-functions/api/data.js
-
 // functions/api/data.js
 export const onRequestGet = async ({ request, env }) => {
   try {
@@ -62,3 +60,4 @@ export const onRequestGet = async ({ request, env }) => {
     });
   }
 };
+
