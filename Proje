@@ -1,0 +1,243 @@
+/project-root
+├─ package.json                (opsiyonel)
+├─ /public
+│   ├─ index.html
+│   ├─ index.js
+│   └─ Vers0.css
+└─ /functions
+   └─ /api
+      └─ data.js
+
+
+functions/api/data.js
+
+// functions/api/data.js
+export const onRequestGet = async ({ request, env }) => {
+  try {
+    const cookie = env.GAME_COOKIE; // Pages > Project > Settings > Environment variables içine ekle
+    const targetBase = env.TARGET_BASE || 'https://s61-tr.kingsage.gameforge.com/';
+    if (!cookie) {
+      return new Response(JSON.stringify({ success: false, error: 'Server not configured: GAME_COOKIE missing' }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    const url = new URL(request.url);
+    const path = url.searchParams.get('path') || '/?village=6020&s=ally&m=attacks';
+    const targetUrl = new URL(path, targetBase).toString();
+
+    const response = await fetch(targetUrl, {
+      headers: {
+        'Cookie': cookie,
+        'User-Agent': env.USER_AGENT || 'Mozilla/5.0 (compatible; KA-Viewer/1.0)',
+        'Accept': 'text/html,application/xhtml+xml'
+      },
+      redirect: 'follow'
+    });
+
+    if (!response.ok) {
+      const txt = await response.text().catch(()=>null);
+      return new Response(JSON.stringify({ success: false, error: `Upstream fetch failed: ${response.status}`, detail: (txt || '').slice(0,200) }), {
+        status: 502,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    const text = await response.text();
+
+    // Safely extract relevant fragment. Öncelik: <div class="contentpane"> ... </div>
+    let fragment = null;
+    const contentpaneMatch = text.match(/<div[^>]*class=["'][^"']*contentpane[^"']*["'][\s\S]*?<\/div>/i);
+    if (contentpaneMatch) {
+      fragment = contentpaneMatch[0];
+    } else {
+      const bodyMatch = text.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+      fragment = bodyMatch ? bodyMatch[1] : text;
+    }
+
+    const baseHref = targetBase.endsWith('/') ? targetBase : (targetBase + '/');
+    const htmlOut = `<base href="${baseHref}">${fragment}`;
+
+    return new Response(JSON.stringify({ success: true, html: htmlOut }), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-store'
+      }
+    });
+  } catch (err) {
+    return new Response(JSON.stringify({ success: false, error: 'Internal error', detail: err.message }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+};
+
+
+public/index.html
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ka 61 tr</title>
+  <link rel="stylesheet" type="text/css" href="Vers0.css" />
+  <style>
+    body {
+      background-image: url("img/layout/lay_content.jpg");
+      background-size: cover;
+      background-repeat: repeat;
+    }
+    #loading { font-weight: bold; padding: 10px; }
+  </style>
+</head>
+<body>
+  <p align="center">
+    <a id="ultimaRevision"></a>
+    <div class="botonesSuperiores" align="center">
+      <button type="button" id="miBtnBandera" style="font-weight:bold;">Bandera</button>
+      <button type="button" id="miBtn">Ordenar por jugador</button>
+      <button type="button" id="miBtnTropa">Ordenar por tropa</button>
+      <button type="button" id="miBtnColoniaDestino">Ordenar por Destino</button>
+      <button type="button" id="miBtnColoniaOrigen">Ordenar por Origen</button>
+    </div>
+    <br /><br />
+    <a id="totalDeAtaques" align="center"></a>
+    <br />
+  </p>
+
+  <div id="filtro" align="center">
+    <label for="txtBuscar">Buscar: </label>
+    <input type="text" id="txtBuscar" name="txtBuscar" value="" />
+    <input type="radio" name="opcion" value="destino" checked id="destino" /><label for="destino">Por destino </label>
+    <input type="radio" name="opcion" value="Origen" id="origen" /><label for="origen">Por origen </label>
+    <input type="button" value="Filtrar" id="btnBuscar" />
+    <br /><br />
+  </div>
+
+  <div class="contentpane">
+    <div id="ataquesXXX" align="center">
+      <div id="loading">Yükleniyor...</div>
+    </div>
+  </div>
+
+  <script src="index.js"></script>
+</body>
+</html>
+
+
+
+
+public/index.js
+
+// public/index.js
+(async function () {
+  const container = document.getElementById('ataquesXXX');
+  const loading = document.getElementById('loading');
+
+  function formatRemaining(ms) {
+    if (ms <= 0) return 'Varış';
+    const total = Math.floor(ms / 1000);
+    const s = total % 60;
+    const m = Math.floor(total / 60) % 60;
+    const h = Math.floor(total / 3600) % 24;
+    const d = Math.floor(total / 86400);
+    if (d > 0) return `${d}g ${h}s ${m}d ${s}s`;
+    if (h > 0) return `${h}s ${m}d ${s}s`;
+    if (m > 0) return `${m}d ${s}s`;
+    return `${s}s`;
+  }
+  function formatAbsolute(iso) {
+    const d = new Date(iso);
+    if (isNaN(d)) return iso;
+    return d.toLocaleString();
+  }
+
+  let timers = [];
+  function clearTimers() {
+    timers.forEach(t => clearInterval(t));
+    timers = [];
+  }
+
+  // Basit: metin HH:MM veya HH:MM:SS bulursa data-ga-timestamp ekle
+  function annotateTimestamps(root) {
+    const timeRegex = /([01]?\d|2[0-3]):[0-5]\d(:[0-5]\d)?/g;
+    const candidates = root.querySelectorAll('span, td, div, time, a');
+    const today = new Date();
+    candidates.forEach(node => {
+      if (!node || !node.textContent) return;
+      const txt = node.textContent.trim();
+      const m = txt.match(timeRegex);
+      if (m && m.length > 0) {
+        const t = m[0];
+        const parts = t.split(':');
+        const d = new Date(today.getFullYear(), today.getMonth(), today.getDate(),
+                           parseInt(parts[0] || 0), parseInt(parts[1] || 0), parseInt(parts[2] || 0 || 0));
+        if (!isNaN(d)) {
+          node.setAttribute('data-ga-timestamp', d.toISOString());
+        }
+      }
+    });
+  }
+
+  function initTimers() {
+    clearTimers();
+    const nodes = Array.from(container.querySelectorAll('[data-ga-timestamp]'));
+    nodes.forEach(node => {
+      const iso = node.getAttribute('data-ga-timestamp');
+      if (!iso) return;
+      const update = () => {
+        const t = Date.parse(iso);
+        if (isNaN(t)) return;
+        const rem = t - Date.now();
+        if (rem <= 0) {
+          node.textContent = formatAbsolute(iso) + ' (Varış)';
+        } else {
+          node.textContent = formatAbsolute(iso) + ' (Kalan: ' + formatRemaining(rem) + ')';
+        }
+      };
+      update();
+      const id = setInterval(update, 1000);
+      timers.push(id);
+    });
+  }
+
+  async function fetchAndRender(retry = 0) {
+    try {
+      loading && (loading.textContent = 'Yükleniyor...');
+      const resp = await fetch('/api/data?path=/?village=6020&s=ally&m=attacks', { cache: 'no-store' });
+      if (!resp.ok) {
+        const txt = await resp.text().catch(()=>null);
+        throw new Error('HTTP ' + resp.status + ' - ' + (txt || resp.statusText));
+      }
+      const data = await resp.json();
+      if (!data.success) throw new Error(data.error || 'Bad data');
+
+      container.innerHTML = data.html;
+
+      annotateTimestamps(container);
+      initTimers();
+
+      loading && (loading.textContent = '');
+    } catch (err) {
+      console.error('Fetch error', err);
+      loading && (loading.textContent = 'Veri alınamadı: ' + err.message);
+      if (retry < 4) setTimeout(() => fetchAndRender(retry + 1), Math.pow(2, retry) * 1000);
+    }
+  }
+
+  await fetchAndRender();
+  setInterval(fetchAndRender, 30000);
+})();
+
+
+public/Vers0.css
+
+/* public/Vers0.css - minimal */
+body { font-family: Arial, Helvetica, sans-serif; color: #111; }
+.contentpane { max-width: 1200px; margin: 0 auto; padding: 10px; background: rgba(255,255,255,0.02); }
+#ataquesXXX { background: rgba(255,255,255,0.03); padding: 10px; border-radius: 6px; }
+#loading { color: #333; }
