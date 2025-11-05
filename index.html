@@ -1,0 +1,52 @@
+public/index.html
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ka 61 tr</title>
+  <link rel="stylesheet" type="text/css" href="Vers0.css" />
+  <style>
+    body {
+      background-image: url("img/layout/lay_content.jpg");
+      background-size: cover;
+      background-repeat: repeat;
+    }
+    #loading { font-weight: bold; padding: 10px; }
+  </style>
+</head>
+<body>
+  <p align="center">
+    <a id="ultimaRevision"></a>
+    <div class="botonesSuperiores" align="center">
+      <button type="button" id="miBtnBandera" style="font-weight:bold;">Bandera</button>
+      <button type="button" id="miBtn">Ordenar por jugador</button>
+      <button type="button" id="miBtnTropa">Ordenar por tropa</button>
+      <button type="button" id="miBtnColoniaDestino">Ordenar por Destino</button>
+      <button type="button" id="miBtnColoniaOrigen">Ordenar por Origen</button>
+    </div>
+    <br /><br />
+    <a id="totalDeAtaques" align="center"></a>
+    <br />
+  </p>
+
+  <div id="filtro" align="center">
+    <label for="txtBuscar">Buscar: </label>
+    <input type="text" id="txtBuscar" name="txtBuscar" value="" />
+    <input type="radio" name="opcion" value="destino" checked id="destino" /><label for="destino">Por destino </label>
+    <input type="radio" name="opcion" value="Origen" id="origen" /><label for="origen">Por origen </label>
+    <input type="button" value="Filtrar" id="btnBuscar" />
+    <br /><br />
+  </div>
+
+  <div class="contentpane">
+    <div id="ataquesXXX" align="center">
+      <div id="loading">Yükleniyor...</div>
+    </div>
+  </div>
+
+  <script src="index.js"></script>
+</body>
+</html>
